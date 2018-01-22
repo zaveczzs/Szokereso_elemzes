@@ -1,0 +1,176 @@
+---
+title: "Szokereso"
+author: "Zsofi"
+date: '2018 január 15 '
+output: html_document
+---
+## Executive summary
+The study aimed to discover if we can influence the performance on a pattern recognition task in language domain with frontal transcranial direct current stimulation (tDCS). The study was within-subject, and there were 3 conditions (based on stimulation type): left frontal stimulation, right frontal stimulation, and sham condition (placebo condition). In the task, participants had to search for words in a 4x4 matrix of letters. Each session, there were 5 matrixes in which participants could search for the words. Better peformance means finding more words, and longer words (scoring is exponential based on the length of the words). However we can also measure, how many repetitions and overall attempts one made. Also, stimulation can affect performance in these measures in a time-dependent manner (performance might be better in the beginning or in the end of the task), thus we also broke down these important measures to smaller time periods. Other measures we calculated, were informations about the first found words (RT and length), and a break point in the scope of the RTs of found words. Our hypothesis was that frontal stimulation would enhance performance on the task, especially right frontal stimulation, because that hemisphere is more closely related to pattern recognition (however the left is more related to language, so that could also influence the results). Our findings show that stimulation had no effect on the studied measures (score, number of found words, ...) of this pattern recognition task, but it is still possible to dig deeper in the analysis (for example we can measure if results differ based on which matrix participannts are at, i.e. from 1-5).
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+### Importing libraries
+```{r}
+#install.packages("car")
+#install.packages("pastecs")
+library(tidyverse)
+library(readxl)
+library(reshape2)
+#library(car)
+library(pastecs)
+library(ez)
+```
+##Read the data
+```{r}
+
+szokereso_data <- read_excel("szokereso_out.xlsx", col_names = TRUE)
+```
+###Create a new dataset, in which every row is an average of data acquired during the same session
+```{r}
+szokereso_session <- szokereso_data %>% 
+  mutate(session = paste(ID, Stimuláció, Feladat, sep = "_")) %>%
+  select(-c(Név, ID, Stimuláció, Feladat)) %>%
+  group_by(session) %>% 
+  summarise_all(.funs = mean) %>% 
+  separate(col=session, into = c("ID", "Stim", "List"), sep = "_")
+
+
+```
+##Exploring data
+### Boxplots with labeled outliers
+```{r fig.height = 15, fig.width = 25, out="150%"}
+
+#changing data format to be able to create plots simultaniously to all variables
+szokereso_melted <- szokereso_session %>% 
+  select(-c(List, Alkalom)) %>% 
+  melt(id.vars = c("ID","Stim"))%>%
+  drop_na()
+
+#function for detecting outliers
+is_outlier <- function(x) {
+  return(x < quantile(x, 0.25) - 1.5 * IQR(x) | x > quantile(x, 0.75) + 1.5 * IQR(x))
+}
+#applying outlier detecting function to the dataset
+szokereso_melted <- szokereso_melted %>%
+  group_by(variable) %>% 
+  mutate(outlier = ifelse(is_outlier(value), ID,""))
+
+#creating the figures
+boxplots <- ggplot(data = szokereso_melted, aes(x=variable, y=value)) + 
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free") +
+  geom_text(aes(label=outlier), hjust=-0.3)
+boxplots
+
+```
+Based on the boxplots, Participant 310 seems to be outlier on several measures, but those are not those that influence the effective performance of participant on the task (not outlier in score of the task, number of found words, but outlier in the number of overall attempts, and repetition)
+Other participants were not consistently outliers on several measures, thus I did not exclude any participant from the analysis based on the boxplots. However, I should rerun the analyses to see if these outliers affect the results. Question is if I exclude them from only that measure on which they are outlier, than the sample on which I run the analyses, would differ, but if I exclude all outliers from all analyses, than the number of remaining participants would be very low. 
+
+###Summary for variables
+```{r}
+#overall
+summary(szokereso_session)
+#by different stimulation sessions
+by(data = szokereso_session, INDICES = szokereso_session$Stim, FUN = stat.desc, basic =FALSE)
+
+```
+###Normality check by figures - histogram and QQplot
+```{r fig.height = 18, fig.width = 30}
+histograms <- ggplot(data = szokereso_melted) + 
+  geom_histogram(aes(value)) +
+  facet_wrap(~ variable, scales = "free") 
+histograms
+```
+```{r fig.height = 18, fig.width = 30}
+qqs <- ggplot(data = szokereso_melted) + 
+  geom_qq(aes(sample=value)) +
+  facet_wrap(~ variable, scales = "free") 
+
+qqs
+```
+```{r, eval=FALSE}
+ggsave("boxplots.jpg", boxplots, width = 25, height = 15, dpi = 300)
+ggsave("histograms.jpg", histograms, width = 25, height = 15, dpi = 300)
+ggsave("qqs.jpg", qqs, width = 25, height = 15, dpi = 300)
+```
+Based on histograms, and qqplots, some measures are not normally distributed. We can also see that the same measures broken down to smaller time periods have similar distributions.
+
+From here (and for start), we focus on the overall measures.
+
+###Normality check with Shapiro-Wilk test
+
+```{r}
+szokereso_session %>% 
+  pull(Összpont) %>% 
+  shapiro.test()
+szokereso_session %>% 
+  pull(Összpont_Szazalek) %>% 
+  shapiro.test()
+szokereso_session %>% 
+  pull(Összesütés) %>% 
+  shapiro.test()
+szokereso_session %>% 
+  pull(Összesszó) %>% 
+  shapiro.test()
+szokereso_session %>% 
+  pull(Összesismétlés) %>% 
+  shapiro.test()
+szokereso_session %>% 
+  pull(Átlagosszóhosszúság) %>% 
+  shapiro.test()
+szokereso_session %>% 
+  pull(RT_törespont) %>% 
+  shapiro.test()
+```
+Violence of normality: Összesütés, Összesismétlés
+
+To be able to still use these variables in a repetead measure ANOVA later, I log-transform these variables, so at least they'll be symmetrical and can be entered to an ANOVA.
+```{r}
+szokereso_session <- szokereso_session %>% 
+  mutate(tf_osszesutes = log10(Összesütés))
+
+szokereso_session <- szokereso_session %>% 
+  mutate(tf_osszesism = log10(Összesismétlés))
+```
+
+
+###Checking Stim differences visually by boxplots
+```{r fig.height = 18, fig.width = 30, out="250%"}
+ggplot(data = szokereso_melted, aes(x=variable, y=value)) + 
+  geom_boxplot(aes(fill=Stim)) +
+  facet_wrap(~ variable, scales = "free")
+```
+##Hypothesis
+The hypothesis was the following: Right frontal stimulation would improve performance on pattern recognition task compared to left frontal stim and sham. 
+
+##Data analysis
+```{r}
+score_model <-ezANOVA(data = szokereso_session, dv = .(Összpont), wid = .(ID), within = .(Stim), detailed = TRUE, type = 2)
+
+score_model
+
+```
+Condition of sphericity has been met, but the model was not signficant (F(2, 38)= 0.74, p = 0.48).
+```{r}
+words_model <-ezANOVA(data = szokereso_session, dv = .(Összesszó), wid = .(ID), within = .(Stim), detailed = TRUE, type = 2)
+
+words_model
+```
+Condition of sphericity has been met, but the model was not signficant (F(2, 38)= 0.14, p = 0.86).
+```{r}
+wordslength_model <-ezANOVA(data = szokereso_session, dv = .(Átlagosszóhosszúság), wid = .(ID), within = .(Stim), detailed = TRUE, type = 2)
+
+wordslength_model
+```
+Sphericity was violated, thus GGe correction was used, but the model was not signficant (F(2, 38)= 0.72, p = 0.15).
+```{r}
+#repetition_model <-ezANOVA(data = szokereso_session, dv = .(tf_osszesism), wid = .(ID), within = .(Stim), detailed = TRUE, type = 2)
+
+#repetition_model
+```
+0-áknál a logaritmus -inf-et ír!! Ezért nem fut le az ANOVA
+
+Post-hoc Tests
+pairwise.t.test(longBush$Retch, longBush$Animal, paired = TRUE, p.adjust.method = "bonferroni")
+
