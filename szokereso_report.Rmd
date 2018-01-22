@@ -5,7 +5,7 @@ date: '2018 január 15 '
 output: html_document
 ---
 ## Executive summary
-The study aimed to discover if we can influence the performance on a pattern recognition task in language domain with frontal transcranial direct current stimulation (tDCS). The study was within-subject, and there were 3 conditions (based on stimulation type): left frontal stimulation, right frontal stimulation, and sham condition (placebo condition). In the task, participants had to search for words in a 4x4 matrix of letters. Each session, there were 5 matrixes in which participants could search for the words. Better peformance means finding more words, and longer words (scoring is exponential based on the length of the words). However we can also measure, how many repetitions and overall attempts one made. Also, stimulation can affect performance in these measures in a time-dependent manner (performance might be better in the beginning or in the end of the task), thus we also broke down these important measures to smaller time periods. Other measures we calculated, were informations about the first found words (RT and length), and a break point in the scope of the RTs of found words. Our hypothesis was that frontal stimulation would enhance performance on the task, especially right frontal stimulation, because that hemisphere is more closely related to pattern recognition (however the left is more related to language, so that could also influence the results). Our findings show that stimulation had no effect on the studied measures (score, number of found words, ...) of this pattern recognition task, but it is still possible to dig deeper in the analysis (for example we can measure if results differ based on which matrix participannts are at, i.e. from 1-5).
+The study aimed to discover if we can influence the performance on a pattern recognition task in language domain with frontal transcranial direct current stimulation (tDCS). The study was within-subject, and there were 3 conditions (based on stimulation type): left frontal stimulation, right frontal stimulation, and sham condition (placebo condition). In the task, participants had to search for words in a 4x4 matrix of letters. Each session, there were 5 matrixes in which participants could search for the words. Better peformance means finding more words, and longer words (scoring is exponential based on the length of the words). However we can also measure, how many repetitions and overall attempts one made. Other measures we calculated, were informations about the first found words (RT and length), and a break point in the slope of the RTs of found words. Our hypothesis was that frontal stimulation would enhance performance on the task, especially right frontal stimulation, because that hemisphere is more closely related to pattern recognition (however the left is more related to language, so that could also influence the results). Our findings could not show that stimulation had any effect on the studied measures (score, number of found words, ...) of this pattern recognition task, but it is still possible to dig deeper in the analysis (for example we can measure if results differ based on which matrix participannts are at, i.e. from 1-5, or if there are differences in performance if we analyse the measures in smaller times periods).
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
@@ -27,6 +27,7 @@ library(ez)
 szokereso_data <- read_excel("szokereso_out.xlsx", col_names = TRUE)
 ```
 ###Create a new dataset, in which every row is an average of data acquired during the same session
+The source of the data is a previous study of our lab. The raw output file gained from the task was processed by a Python script to yield the recent file format (which is tidy already). However, in the original file, every measure is calculated for each matrices which were included during the same session, so as first step of the analysis, I made averages for each session of these 5 matrices.
 ```{r}
 szokereso_session <- szokereso_data %>% 
   mutate(session = paste(ID, Stimuláció, Feladat, sep = "_")) %>%
@@ -38,6 +39,9 @@ szokereso_session <- szokereso_data %>%
 
 ```
 ##Exploring data
+The variables were the following: Subject ID which shows participants, Stimulation condition (this was categorical), List (this was also categorical, shows which set of matrices the participant recivied at the given session, it was counterbalanced), Alkalom (this shows how many sessions a participant took), Score (found words weighted with the length of these words), score in percent (this is the same as the other in a practical manner), number of all attempts, number of all words, number of all repetitions, average length of found words,RTs and lengths of the first 3 found words, and a break point in the slope of the RTs of found words.
+Attempts, number of words, number of repetitions are also broken down to smaller time periods for later analyses (because stimulation can affect specifically the performance in the beginning or in the end of the task). In the current stage of analysis we do not run statistical analyses on those variables, but I still included them in data exploration.
+
 ### Boxplots with labeled outliers
 ```{r fig.height = 15, fig.width = 25, out="150%"}
 
@@ -64,7 +68,7 @@ boxplots <- ggplot(data = szokereso_melted, aes(x=variable, y=value)) +
 boxplots
 
 ```
-Based on the boxplots, Participant 310 seems to be outlier on several measures, but those are not those that influence the effective performance of participant on the task (not outlier in score of the task, number of found words, but outlier in the number of overall attempts, and repetition)
+Based on the boxplots, there are no very extreme outliers (most extreme datas are in the case of the RTs of the first 3 words), however participant 310 seems to be outlier on several measures, but those are not those that influence the effective performance of participant on the task (not outlier in score of the task, number of found words, but outlier in the number of overall attempts, and repetition).
 Other participants were not consistently outliers on several measures, thus I did not exclude any participant from the analysis based on the boxplots. However, I should rerun the analyses to see if these outliers affect the results. Question is if I exclude them from only that measure on which they are outlier, than the sample on which I run the analyses, would differ, but if I exclude all outliers from all analyses, than the number of remaining participants would be very low. 
 
 ###Summary for variables
@@ -125,15 +129,29 @@ szokereso_session %>%
 ```
 Violence of normality: Összesütés, Összesismétlés
 
-To be able to still use these variables in a repetead measure ANOVA later, I log-transform these variables, so at least they'll be symmetrical and can be entered to an ANOVA.
+To be able to still use these variables in a repetead measure ANOVA later, I log-transform these variables, so at least they'll be symmetrical and can be entered to an ANOVA. After transformation, I checked their distribution with QQ plots again.
 ```{r}
 szokereso_session <- szokereso_session %>% 
-  mutate(tf_osszesutes = log10(Összesütés))
+  mutate(tf_osszesutes = log10(Összesütés + 1))
+
+ggplot(data = szokereso_session) + 
+  geom_qq(aes(sample=tf_osszesutes))
+
+szokereso_session %>% 
+  pull(tf_osszesutes) %>% 
+  shapiro.test()
 
 szokereso_session <- szokereso_session %>% 
-  mutate(tf_osszesism = log10(Összesismétlés))
-```
+  mutate(tf_osszesism = log10(Összesismétlés + 1))
 
+ggplot(data = szokereso_session) + 
+  geom_qq(aes(sample=tf_osszesism))
+
+szokereso_session %>% 
+  pull(tf_osszesism) %>% 
+  shapiro.test()
+```
+Even after data transformation, distributation of overall attempts (Összesütés) still violates normality, so I did not include this measure to the ANOVAs (it has no attribution to better performance, probably reflects more a personal strategy in solving the task).
 
 ###Checking Stim differences visually by boxplots
 ```{r fig.height = 18, fig.width = 30, out="250%"}
@@ -142,7 +160,7 @@ ggplot(data = szokereso_melted, aes(x=variable, y=value)) +
   facet_wrap(~ variable, scales = "free")
 ```
 ##Hypothesis
-The hypothesis was the following: Right frontal stimulation would improve performance on pattern recognition task compared to left frontal stim and sham. 
+The hypothesis was the following: Frontal stimulation would improve performance on pattern recognition task compared to sham. Further, we expected that right frontal stimulation would improve performance more than left frontal stimulation or sham.
 
 ##Data analysis
 ```{r}
@@ -165,12 +183,9 @@ wordslength_model
 ```
 Sphericity was violated, thus GGe correction was used, but the model was not signficant (F(2, 38)= 0.72, p = 0.15).
 ```{r}
-#repetition_model <-ezANOVA(data = szokereso_session, dv = .(tf_osszesism), wid = .(ID), within = .(Stim), detailed = TRUE, type = 2)
+repetition_model <-ezANOVA(data = szokereso_session, dv = .(tf_osszesism), wid = .(ID), within = .(Stim), detailed = TRUE, type = 2)
 
-#repetition_model
+repetition_model
 ```
-0-áknál a logaritmus -inf-et ír!! Ezért nem fut le az ANOVA
-
-Post-hoc Tests
-pairwise.t.test(longBush$Retch, longBush$Animal, paired = TRUE, p.adjust.method = "bonferroni")
+Condition of sphericity has been met, but the model was not signficant (F(2, 38)= 0.60, p = 0.55).
 
